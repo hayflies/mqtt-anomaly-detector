@@ -3,6 +3,7 @@ from tqdm import tqdm
 from config import FEATURES
 import joblib
 from sklearn.preprocessing import LabelEncoder
+from xgboost import XGBClassifier
 
 # 인코더 객체 전역
 label1_encoder = LabelEncoder()
@@ -33,14 +34,40 @@ def encode_message_columns(df):
     df['mqtt.protoname'] = protoname_encoder.fit_transform(df['mqtt.protoname'].astype(str))
     return df
 
-def train_model_in_chunks(path, model1, model2, chunksize=1000):
+def train_model_in_chunks(path, model1=None, model2=None, chunksize=1000):
+    # 파라메터 추가: model1/model2 없을 때 default 설정
+    # if model1 is None:
+    #     model1 = XGBClassifier(
+    #         objective='multi:softmax',
+    #         num_class=3,
+    #         eval_metric='mlogloss',
+    #         scale_pos_weight=10,         # 자기 현재 imbalance 기준에서의 가장 적절감
+    #         max_depth=6,
+    #         min_child_weight=2,
+    #         gamma=0.5,
+    #         subsample=0.8,
+    #         colsample_bytree=0.8,
+    #         learning_rate=0.07,
+    #         max_delta_step=1,
+    #         n_estimators=200,
+    #         use_label_encoder=False
+    #     )
+    #
+    # if model2 is None:
+    #     model2 = XGBClassifier(
+    #         objective='multi:softmax',
+    #         num_class=5,
+    #         eval_metric='mlogloss',
+    #         max_depth=6,
+    #         learning_rate=0.07,
+    #         n_estimators=200,
+    #         use_label_encoder=False
+    #     )
+
     chunk_iter = pd.read_csv(path, usecols=FEATURES + ['target'], chunksize=chunksize, low_memory=False)
 
     for chunk in tqdm(chunk_iter, desc="Training in chunks"):
         chunk.dropna(subset=FEATURES + ['target'], inplace=True)
-
-        # ✅ chunk 내부 shuffle
-        chunk = chunk.sample(frac=1, random_state=42).reset_index(drop=True)
 
         # ✅ label1/label2 생성
         chunk = convert_target_to_labels(chunk)
@@ -52,7 +79,7 @@ def train_model_in_chunks(path, model1, model2, chunksize=1000):
         y1 = chunk['label1']
         model1.fit(X, y1)
 
-        # ✅ malicious만 따로 분리해서 label2 학습
+        # ✅ malicious만 다른 타입으로 label2 학습
         if 'label2' in chunk.columns and 'malicious' in label1_encoder.classes_:
             malicious_label_num = label1_encoder.transform(['malicious'])[0]
             mal_chunk = chunk[chunk['label1'] == malicious_label_num].copy()
