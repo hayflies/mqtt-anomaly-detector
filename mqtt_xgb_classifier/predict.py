@@ -1,95 +1,91 @@
+from config import *
 import pandas as pd
-import numpy as np
 import joblib
-from config import FEATURES
 from sklearn.metrics import classification_report, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# 모델 & 인코더 불러오기
-xgb_model_3class = joblib.load("mqtt_xgb_classifier/model/xgb_model_3class.pkl")
-xgb_model_maltype = joblib.load("mqtt_xgb_classifier/model/xgb_model_maltype.pkl")
-label1_encoder = joblib.load("mqtt_xgb_classifier/model/label1_encoder.pkl")
-label2_encoder = joblib.load("mqtt_xgb_classifier/model/label2_encoder.pkl")
-tcp_flags_encoder = joblib.load("mqtt_xgb_classifier/model/tcp_flags_encoder.pkl")
-conack_flags_encoder = joblib.load("mqtt_xgb_classifier/model/conack_flags_encoder.pkl")
-conflags_encoder = joblib.load("mqtt_xgb_classifier/model/conflags_encoder.pkl")
-hdrflags_encoder = joblib.load("mqtt_xgb_classifier/model/hdrflags_encoder.pkl")
-msg_encoder = joblib.load("mqtt_xgb_classifier/model/msg_encoder.pkl")
-protoname_encoder = joblib.load("mqtt_xgb_classifier/model/protoname_encoder.pkl")
+def predict_pipeline():
+    # ====== 모델 & 인코더 로드 ======
+    df = pd.read_csv(TEST_PATH, low_memory=False).fillna(0)
+    model1 = joblib.load(MODEL1_PATH)
+    model2 = joblib.load(MODEL2_PATH)
+    le1 = joblib.load(ENC1_PATH)
+    le2 = joblib.load(ENC2_PATH)
 
-def safe_transform(encoder, series):
-    known_classes = set(encoder.classes_)
-    series = series.astype(str)
-    series = series.apply(lambda x: x if x in known_classes else "__unknown__")
-    if "__unknown__" not in encoder.classes_:
-        encoder.classes_ = np.append(encoder.classes_, "__unknown__")
-    return encoder.transform(series)
-
-# target → label1, label2 변환 함수
-def convert_target_to_labels(df):
-    df[['label1', 'label2']] = df['target'].apply(lambda x: pd.Series(
-        ('normal', 'none') if x == 'legitimate' else
-        ('ERROR', None) if x == 'error' else
-        ('malicious', x)
-    ))
-    return df
-
-def encode_message_columns(df):
-    df['tcp.flags'] = safe_transform(tcp_flags_encoder, df['tcp.flags'])
-    df['mqtt.conack.flags'] = safe_transform(conack_flags_encoder, df['mqtt.conack.flags'])
-    df['mqtt.conflags'] = safe_transform(conflags_encoder, df['mqtt.conflags'])
-    df['mqtt.hdrflags'] = safe_transform(hdrflags_encoder, df['mqtt.hdrflags'])
-    df['mqtt.msg'] = safe_transform(msg_encoder, df['mqtt.msg'])
-    df['mqtt.protoname'] = safe_transform(protoname_encoder, df['mqtt.protoname'])
-    return df
-
-def evaluate_model(test_path, model1, model2):
-    df = pd.read_csv(test_path, usecols=FEATURES + ['target'], low_memory=False).dropna()
-    df = convert_target_to_labels(df)
-    df = encode_message_columns(df)
-
-    df['label1'] = label1_encoder.transform(df['label1'])
-    y1_pred = model1.predict(df[FEATURES])
-    print("[1] 삼분류 평가:\n", classification_report(df['label1'], y1_pred, target_names=label1_encoder.classes_))
-
-    mal_idx = y1_pred == label1_encoder.transform(['malicious'])[0]
-    if mal_idx.any():
-        y2_true = safe_transform(label2_encoder, df.loc[mal_idx, 'label2'])
-        y2_pred = model2.predict(df.loc[mal_idx, FEATURES])
-        print("[2] 악성코드 종류 평가:\n", classification_report(y2_true, y2_pred, target_names=label2_encoder.classes_))
-        plot_confusion(y2_true, y2_pred, label2_encoder.classes_, "Malware Type Confusion Matrix")
-
-def generate_combined_predictions(test_path, model1, model2):
-    df = pd.read_csv(test_path, usecols=FEATURES + ['target'], low_memory=False).dropna()
-    df = convert_target_to_labels(df)
-    df = encode_message_columns(df)
-
-    y1_pred = model1.predict(df[FEATURES])
-    label1_str = label1_encoder.inverse_transform(y1_pred)
-    final_preds = []
-    for i, lbl in enumerate(label1_str):
-        if i % 10000 == 0:
-            print(f"🔁 {i}번째 샘플 예측 중...")
-        if lbl == "malicious":
-            mal_type_pred = model2.predict(df.loc[[i], FEATURES])
-            mal_type_str = label2_encoder.inverse_transform(mal_type_pred)[0]
-            final_preds.append(f"malicious_{mal_type_str}")
+    # ====== label1 생성 ======
+    def convert_target(x):
+        if x == 'legitimate':
+            return 'normal'
+        elif x == 'error':
+            return 'ERROR'
         else:
-            final_preds.append(lbl)
-    return final_preds
+            return 'malicious'
 
-def save_predictions(pred_list, out_path):
-    pd.DataFrame({"final_label": pred_list}).to_csv(out_path, index=False)
-    print(f"예측 결과 저장 완료: {out_path}")
+    df['label1'] = df['target'].apply(convert_target)
 
-def plot_confusion(y_true, y_pred, class_names, title):
-    cm = confusion_matrix(y_true, y_pred)
-    plt.figure(figsize=(8, 6))
+    # ====== model1 예측 ======
+    X = df[FEATURES]
+    y1_pred = model1.predict(X)
+    y1_true = le1.transform(df['label1'])
+    label1_str = le1.inverse_transform(y1_pred)
+
+    print("\n[1] ✅ 삼분류 평가 결과:")
+    print(classification_report(y1_true, y1_pred, target_names=le1.classes_))
+
+    # ====== confusion matrix (3-class) ======
+    cm1 = confusion_matrix(y1_true, y1_pred)
+    plt.figure(figsize=(6,5))
     plt.rcParams['font.family'] = 'Malgun Gothic'
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=class_names, yticklabels=class_names)
+    sns.heatmap(cm1, annot=True, fmt='d', cmap='Blues', xticklabels=le1.classes_, yticklabels=le1.classes_)
+    plt.title("3-Class Confusion Matrix")
     plt.xlabel("Predicted")
     plt.ylabel("True")
-    plt.title(title)
     plt.tight_layout()
     plt.show()
+
+    # ====== model2 예측 (malicious만) ======
+    final_pred = []
+    y2_true, y2_pred = [], []
+
+    print("\n[2] ✅ 악성코드 공격 타입 예측 중...")
+    # model2 예측 (malicious만)
+    for i, l1 in enumerate(label1_str):
+        if i % 10000 == 0:
+            print(f"🔁 {i}번째 샘플 예측 중...")
+
+        if l1 == 'malicious':
+            x_row = X.iloc[[i]]
+            pred2 = model2.predict(x_row)[0]
+            label2 = le2.inverse_transform([pred2])[0]
+            final_pred.append(f"malicious_{label2}")
+
+            # ✅ 오직 malicious인 경우에만 target을 인코딩
+            if df.loc[i, 'target'] not in ['legitimate', 'error']:
+                y2_true.append(le2.transform([df.loc[i, 'target']])[0])
+                y2_pred.append(pred2)
+        else:
+            final_pred.append(l1)
+
+    # ====== 악성코드 세부 분류 평가 ======
+    if y2_true:
+        print("\n[3] ✅ 악성코드 공격 타입 평가 결과:")
+        print(classification_report(y2_true, y2_pred, target_names=le2.classes_))
+
+        cm2 = confusion_matrix(y2_true, y2_pred)
+        plt.figure(figsize=(8,6))
+        plt.rcParams['font.family'] = 'Malgun Gothic'
+        sns.heatmap(cm2, annot=True, fmt='d', cmap='Oranges', xticklabels=le2.classes_, yticklabels=le2.classes_)
+        plt.title("Malware Type Confusion Matrix")
+        plt.xlabel("Predicted")
+        plt.ylabel("True")
+        plt.tight_layout()
+        plt.show()
+    else:
+        print("⚠️ 악성 예측 결과가 없어 세부 분류 평가 생략됨.")
+
+    # ====== 저장 (유의미한 컬럼만 포함) ======
+    df['final_label'] = final_pred
+    df[USEFUL_COLS].to_csv(SAVE_PATH, index=False)
+    print("📁 예측 결과 저장 완료 (유의미한 컬럼만):", SAVE_PATH)
+

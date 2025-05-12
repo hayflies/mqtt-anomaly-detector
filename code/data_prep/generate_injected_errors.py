@@ -2,13 +2,13 @@ import pandas as pd
 import numpy as np
 
 # ========== 설정 ==========
-TRAIN_PATH = "data/processed/train70.csv"
-TEST_PATH = "data/processed/test30.csv"
+TRAIN_PATH = "data/processed/train70_reduced.csv"
+TEST_PATH = "data/processed/test30_reduced.csv"
 ERROR_OUT_CSV = "data/processed/generated_error.csv"
-TRAIN_OUT = "data/processed/train_ready_with_error.csv"
-TEST_OUT = "data/processed/test_ready_with_error.csv"
-NUM_ERROR_TRAIN = 4000
-NUM_ERROR_TEST = 1000
+TRAIN_OUT = "data/processed/train_reduced_n_error.csv"
+TEST_OUT = "data/processed/test_reduced_n_error.csv"
+NUM_ERROR_TRAIN = 70000
+NUM_ERROR_TEST = 30000
 
 MEANINGFUL_COLUMNS = [
     'mqtt.kalive', 'mqtt.qos', 'mqtt.retain', 'mqtt.len', 'mqtt.dupflag',
@@ -39,7 +39,7 @@ def inject_error(row):
     return row
 
 # ========== train 처리 ==========
-print("🚀 train70.csv 로드 중...")
+print("🚀 train.csv 로드 중...")
 train_chunks = pd.read_csv(TRAIN_PATH, chunksize=10000, low_memory=False)
 filtered_train = []
 for chunk in train_chunks:
@@ -53,7 +53,7 @@ train_sample = train_legit_df.sample(n=NUM_ERROR_TRAIN, random_state=42).reset_i
 error_train = train_sample.apply(inject_error, axis=1)
 
 # ========== test 처리 ==========
-print("🚀 test30.csv 로드 중...")
+print("🚀 test.csv 로드 중...")
 test_df = pd.read_csv(TEST_PATH, low_memory=False)
 error_test = error_train.sample(n=NUM_ERROR_TEST, random_state=42).reset_index(drop=True)
 
@@ -78,14 +78,15 @@ def insert_errors(base_df, errors, interval):
 
 
 # 삽입
-train_ready = insert_errors(pd.read_csv(TRAIN_PATH, low_memory=False), error_train, len(pd.read_csv(TRAIN_PATH, low_memory=False)) // NUM_ERROR_TRAIN)
-test_ready = insert_errors(test_df, error_test, len(test_df) // NUM_ERROR_TEST)
+train_adjusted = insert_errors(pd.read_csv(TRAIN_PATH, low_memory=False), error_train, len(pd.read_csv(TRAIN_PATH, low_memory=False)) // NUM_ERROR_TRAIN)
+test_adjusted = insert_errors(test_df, error_test, len(test_df) // NUM_ERROR_TEST)
 
 # 저장
 print(f"💾 저장 중: {TRAIN_OUT}")
-train_ready.to_csv(TRAIN_OUT, index=False)
+train_adjusted.to_csv(TRAIN_OUT, index=False)
 print(f"💾 저장 중: {TEST_OUT}")
-test_ready.to_csv(TEST_OUT, index=False)
-print(f"💾 이상치 샘플 저장: {ERROR_OUT_CSV}")
-error_train.to_csv(ERROR_OUT_CSV, index=False)
+test_adjusted.to_csv(TEST_OUT, index=False)
+# print(f"💾 이상치 샘플 저장: {ERROR_OUT_CSV}")
+# error_train.to_csv(ERROR_OUT_CSV, index=False)
 print("✅ 완료.")
+
