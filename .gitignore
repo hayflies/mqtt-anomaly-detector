@@ -8,6 +8,21 @@ mqtt_xgb_classifier/output/*.csv
 __pycache__/
 *.pyc
 
+# JetBrains IDE 설정 폴더 무시
+.idea/
+git rm -r --cached .idea
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs and temp
+*.log
+*.tmp
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
 # Virtual environments
 .venv/
 venv/
