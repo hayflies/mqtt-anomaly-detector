@@ -1,0 +1,27 @@
+# 모델 파일
+mqtt_xgb_classifier/model/*.pkl
+
+# 예측 결과
+mqtt_xgb_classifier/output/*.csv
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+*.env
+
+# Pcap
+data/pcap/
+
+# data
+data/processed
+data/raw
+README.md
+
+# 안쓰는 코드
+code/archive
