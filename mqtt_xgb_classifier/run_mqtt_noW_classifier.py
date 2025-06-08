@@ -3,12 +3,11 @@ import numpy as np
 import xgboost as xgb
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import classification_report, confusion_matrix
 from config import TRAIN_PATH, TEST_PATH, MODEL_PATH
 
 # 🔹 클래스 정의
-class_names = [ 'legitimate', 'dos', 'flood', 'bruteforce', 'malformed', 'slowite']
+class_names = ['legitimate', 'dos', 'flood', 'bruteforce', 'malformed', 'slowite']
 target_mapping = {name: idx for idx, name in enumerate(class_names)}
 inverse_mapping = {idx: name for name, idx in target_mapping.items()}
 
@@ -36,47 +35,12 @@ def convert_object_to_numeric(df):
 X_train = convert_object_to_numeric(X_train)
 X_test = convert_object_to_numeric(X_test)
 
-# 🔹 클래스 가중치 → 샘플별 weight 계산
-class_weights = compute_class_weight(
-    class_weight='balanced',
-    classes=np.unique(y_train),
-    y=y_train
-)
-weights = np.array([class_weights[label] for label in y_train])
-
 # 🔹 DMatrix 생성
-dtrain = xgb.DMatrix(X_train, label=y_train, weight=weights)
+dtrain = xgb.DMatrix(X_train, label=y_train)
 dvalid = xgb.DMatrix(X_test, label=y_test)
-
-# 🔹 focal loss (클래스별 alpha 적용)
-alpha_dict = {
-    0: 0.25,  # legitimate (줄임)
-    1: 0.25,  # dos (줄임)
-    2: 0.5,  # flood
-    3: 0.5,  # bruteforce
-    4: 0.5,  # malformed
-    5: 0.25  # slowite (줄임)
-}
-
-def focal_loss(alpha_dict, gamma=2.0, num_classes=6):
-    def focal_obj(preds, dtrain):
-        labels = dtrain.get_label().astype(int)
-        preds = preds.reshape(-1, num_classes)
-        preds = np.clip(preds, -10, 10)
-        exp_preds = np.exp(preds - np.max(preds, axis=1, keepdims=True))
-        probs = exp_preds / np.sum(exp_preds, axis=1, keepdims=True)
-        one_hot = np.eye(num_classes)[labels]
-        pt = (probs * one_hot).sum(axis=1).reshape(-1, 1)
-        alpha_vec = np.array([alpha_dict[label] for label in labels]).reshape(-1, 1)
-        grad = -alpha_vec * (1 - pt) ** gamma * (one_hot - probs)
-        hess = alpha_vec * (1 - pt) ** gamma * (1 - probs) * probs * (gamma + 1)
-        return grad.reshape(-1), hess.reshape(-1)
-    return focal_obj
 
 # 🔹 XGBoost 하이퍼파라미터
 params = {
-    # "tree_method": "gpu_hist",  # GPU로 학습
-    # "predictor": "gpu_predictor",  # GPU로 예측
     'objective': 'multi:softprob',
     'num_class': len(class_names),
     'eval_metric': 'mlogloss',
@@ -91,13 +55,12 @@ params = {
 }
 
 # 🔹 학습
-print("🚀 XGBoost + Focal Loss 학습 시작...")
+print("🚀 XGBoost 학습 시작...")
 evals = [(dtrain, 'train'), (dvalid, 'eval')]
 model = xgb.train(
     params,
     dtrain,
     num_boost_round=1000,
-    obj=focal_loss(alpha_dict, gamma=2.0, num_classes=len(class_names)),
     evals=evals,
     early_stopping_rounds=50,
     verbose_eval=100
@@ -132,13 +95,13 @@ plt.grid(True)
 plt.tight_layout()
 plt.show()
 
+# 🔹 Feature Importance 시각화
 print("📊 Feature Importance 시각화")
 fig, ax = plt.subplots(figsize=(10, 6))
 xgb.plot_importance(model, max_num_features=15, importance_type='gain', ax=ax)
 plt.title("Top 15 Feature Importance (by Gain)")
 plt.tight_layout()
 plt.show()
-
 
 # 🔹 혼동 행렬
 cm = confusion_matrix(y_test, y_pred_classes, normalize='true')
