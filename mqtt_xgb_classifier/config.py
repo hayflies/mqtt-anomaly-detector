@@ -5,11 +5,8 @@ USEFUL_COLS = [
     'mqtt.proto_len', 'mqtt.msgtype', 'mqtt.protoname', 'final_label'
 ]
 
-TRAIN_PATH = "data/processed/train_ultimate.csv"
-TEST_PATH = "data/processed/test_ultimate.csv"
+TRAIN_PATH = "data/processed/train70_balanced.csv"
+TEST_PATH = "data/processed/test30_balanced.csv"
 SAVE_PATH = "mqtt_xgb_classifier/output/final_predictions.csv"
 
-MODEL1_PATH = "mqtt_xgb_classifier/model/xgb_model_3class.pkl"
-MODEL2_PATH = "mqtt_xgb_classifier/model/xgb_model_maltype.pkl"
-ENC1_PATH = "mqtt_xgb_classifier/model/label1_encoder.pkl"
-ENC2_PATH = "mqtt_xgb_classifier/model/label2_encoder.pkl"
+MODEL_PATH = "mqtt_xgb_classifier/model/lightGBM_model.pkl"
