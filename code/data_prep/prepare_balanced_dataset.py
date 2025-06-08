@@ -1,7 +1,7 @@
 import pandas as pd
 from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
-from imblearn.over_sampling import RandomOverSampler
+from imblearn.over_sampling import SMOTE
 
 def cleandata(df):
     for col in [
@@ -36,27 +36,45 @@ df_flood['target'] = 'flood'
 df_bruteforce = pd.read_csv('data/raw/bruteforce.csv').fillna(0)
 df_bruteforce['target'] = 'bruteforce'
 
-# 🔹 legitimate 샘플링 (예: 2%)
+# 🔹 legitimate 샘플링
 print("📉 legitimate 샘플링 중...")
 df_legitimate_sampled = df_legitimate.sample(frac=0.02, random_state=42)
 
-# 🔹 병합
+# 🔹 병합 및 정제
 df = pd.concat([
     df_legitimate_sampled, df_slowite, df_malaria,
     df_malformed, df_flood, df_bruteforce
 ], ignore_index=True)
-
 df = shuffle(df, random_state=42)
 df = cleandata(df)
 
-# 🔹 훈련/테스트셋 분할 (7:3)
+# 🔹 훈련/테스트셋 분할
 print("🧪 훈련/테스트셋 분할 중...")
 train_df, test_df = train_test_split(df, test_size=0.3, stratify=df['target'], random_state=42)
 
+# 🔹 target 수치 인코딩 (SMOTE 적용 위해)
+print("🔢 target 수치 인코딩 중...")
+label_mapping = {label: idx for idx, label in enumerate(train_df['target'].unique())}
+inverse_mapping = {v: k for k, v in label_mapping.items()}
+train_df['target_enc'] = train_df['target'].map(label_mapping)
+
+# 🔹 SMOTE 적용
+print("📈 SMOTE 오버샘플링 적용 중...")
+X_train = train_df.drop(['target', 'target_enc'], axis=1)
+X_train = X_train.apply(lambda col: col.astype('category').cat.codes if col.dtype == 'object' else col)
+y_train = train_df['target_enc']
+
+smote = SMOTE(random_state=42)
+X_resampled, y_resampled = smote.fit_resample(X_train, y_train)
+
+# 🔹 복원
+train_df_resampled = pd.DataFrame(X_resampled, columns=X_train.columns)
+train_df_resampled['target'] = [inverse_mapping[i] for i in y_resampled]
+
 # 🔹 저장
-train_df.to_csv("data/processed/train70_balanced.csv", index=False)
+train_df_resampled.to_csv("data/processed/train70_oversampled.csv", index=False)
 test_df.to_csv("data/processed/test30_balanced.csv", index=False)
 
 print("✅ 저장 완료: train70_oversampled.csv / test30_balanced.csv")
-print(train_df['target'].value_counts())
+print(train_df_resampled['target'].value_counts())
 print(test_df['target'].value_counts())

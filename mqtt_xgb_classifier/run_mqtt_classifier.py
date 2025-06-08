@@ -46,8 +46,17 @@ weights = np.array([class_weights[label] for label in y_train])
 dtrain = xgb.DMatrix(X_train, label=y_train, weight=weights)
 dvalid = xgb.DMatrix(X_test, label=y_test)
 
+alpha_dict = {
+    0: 0.25,  # legitimate (줄임)
+    1: 0.25,  # dos (줄임)
+    2: 0.5,  # flood
+    3: 0.5,  # bruteforce
+    4: 0.5,  # malformed
+    5: 0.25  # slowite (줄임)
+}
+
 # 🔹 Focal Loss 정의
-def focal_loss(alpha=0.25, gamma=2.0, num_classes=6):
+def focal_loss(alpha_dict, gamma=2.0, num_classes=6):
     def focal_obj(preds, dtrain):
         labels = dtrain.get_label().astype(int)
         preds = preds.reshape(-1, num_classes)
@@ -56,8 +65,9 @@ def focal_loss(alpha=0.25, gamma=2.0, num_classes=6):
         probs = exp_preds / np.sum(exp_preds, axis=1, keepdims=True)
         one_hot = np.eye(num_classes)[labels]
         pt = (probs * one_hot).sum(axis=1).reshape(-1, 1)
-        grad = -alpha * (1 - pt) ** gamma * (one_hot - probs)
-        hess = alpha * (1 - pt) ** gamma * (1 - probs) * probs * (gamma + 1)
+        alpha_vec = np.array([alpha_dict[label] for label in labels]).reshape(-1, 1)
+        grad = -alpha_vec * (1 - pt) ** gamma * (one_hot - probs)
+        hess = alpha_vec * (1 - pt) ** gamma * (1 - probs) * probs * (gamma + 1)
         return grad.reshape(-1), hess.reshape(-1)
     return focal_obj
 
@@ -77,13 +87,14 @@ params = {
 }
 
 # 🔹 학습
+
 print("🚀 XGBoost + Focal Loss 학습 시작...")
 evals = [(dtrain, 'train'), (dvalid, 'eval')]
 model = xgb.train(
     params,
     dtrain,
     num_boost_round=1000,
-    obj=focal_loss(alpha=0.25, gamma=2.0, num_classes=len(class_names)),
+    obj=focal_loss(alpha_dict, gamma=2.0, num_classes=len(class_names)),
     evals=evals,
     early_stopping_rounds=50,
     verbose_eval=100

@@ -5,7 +5,7 @@ USEFUL_COLS = [
     'mqtt.proto_len', 'mqtt.msgtype', 'mqtt.protoname', 'final_label'
 ]
 
-TRAIN_PATH = "data/processed/train70_balanced.csv"
+TRAIN_PATH = "data/processed/train70_oversampled.csv"
 TEST_PATH = "data/processed/test30_balanced.csv"
 SAVE_PATH = "mqtt_xgb_classifier/output/final_predictions.csv"
 
