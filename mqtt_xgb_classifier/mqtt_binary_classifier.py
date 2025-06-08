@@ -53,7 +53,8 @@ y_pred = (y_probs >= threshold).astype(int)
 
 # 📊 평가
 print(f"✅ Threshold = {threshold}")
-print("📊 분류 리포트:\n", classification_report(y_test, y_pred))
+print("📊 정상 분류 리포트:\n", classification_report(y_test, y_pred))
+print("\n\n\t정상\n\t공격")
 
 recall = recall_score(y_test, y_pred)
 precision = precision_score(y_test, y_pred)
